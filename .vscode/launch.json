@@ -1,0 +1,28 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python play.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/legged_gym/legged_gym/scripts/train.py",
+            // "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [
+                "--exptid=test",
+                // "g1stair-5",
+                // "--save"
+                "--no_wandb"
+            ],
+            "env": {
+                "PATH": "/usr/bin:${env:PATH}",
+                "LD_LIBRARY_PATH": "/usr/local/lib:${env:LD_LIBRARY_PATH}",
+                "PYTHONPATH": "${workspaceFolder}/legged_gym.legged_gym:${env:PYTHONPATH}",
+            },
+            "cwd": "${workspaceFolder}/legged_gym/legged_gym/scripts"
+        },
+    ]
+}

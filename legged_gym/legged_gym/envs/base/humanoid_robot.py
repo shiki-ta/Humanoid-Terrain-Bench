@@ -58,7 +58,7 @@ import matplotlib.pyplot as plt
 
 
 class HumanoidRobot(BaseTask):
-    def __init__(self, cfg: LeggedRobotCfg, sim_params, physics_engine, sim_device, headless, save):
+    def __init__(self, cfg: LeggedRobotCfg, sim_params, physics_engine, sim_device, headless):
         """ Parses the provided config file,
             calls create_sim() (which creates, simulation, terrain and environments),
             initilizes pytorch buffers used during training
@@ -76,38 +76,14 @@ class HumanoidRobot(BaseTask):
         self.height_samples = None
         self.debug_viz = True
         self.init_done = False
-        self.save = save
         self._parse_cfg(self.cfg)
         super().__init__(self.cfg, sim_params, physics_engine, sim_device, headless)
-
-        self.resize_transform = torchvision.transforms.Resize((self.cfg.depth.resized[1], self.cfg.depth.resized[0]), 
-                                                              interpolation=torchvision.transforms.InterpolationMode.BICUBIC)
         
         if not self.headless:
             self.set_camera(self.cfg.viewer.pos, self.cfg.viewer.lookat)
         self._init_buffers()
         self._prepare_reward_function()
     
-        if self.save:
-            self.episode_data = {
-                'observations': [[] for _ in range(self.num_envs)],
-                'actions': [[] for _ in range(self.num_envs)],
-                'rewards': [[] for _ in range(self.num_envs)],
-                'height_map': [[] for _ in range(self.num_envs)],
-                'privileged_obs': [[] for _ in range(self.num_envs)],
-                'rigid_body_state': [[] for _ in range(self.num_envs)],
-                'dof_state': [[] for _ in range(self.num_envs)]
-            }
-            self.current_episode_buffer = {
-                'observations': [[] for _ in range(self.num_envs)],
-                'actions': [[] for _ in range(self.num_envs)],
-                'rewards': [[] for _ in range(self.num_envs)],
-                'height_map': [[] for _ in range(self.num_envs)],
-                'privileged_obs': [[] for _ in range(self.num_envs)],
-                'rigid_body_state': [[] for _ in range(self.num_envs)],
-                'dof_state': [[] for _ in range(self.num_envs)]
-            }
-        # init data save buffer
         self.init_done = True
         self.global_counter = 0
         self.total_env_steps_counter = 0
@@ -120,21 +96,6 @@ class HumanoidRobot(BaseTask):
 
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
         self.post_physics_step()
-
-    def get_data_stats(self):
-        """get dataset information"""
-        stats = {
-            'total_episodes': 0,
-            'total_samples': 0,
-            'avg_episode_length': 0
-        }
-        for env_data in self.episode_data['observations']:
-            stats['total_episodes'] += len(env_data)
-            for ep in env_data:
-                stats['total_samples'] += ep.shape[0]
-        if stats['total_episodes'] > 0:
-            stats['avg_episode_length'] = stats['total_samples'] / stats['total_episodes']
-        return stats
 
     def step(self, actions):
         """ Apply actions, simulate, call self.post_physics_step()
@@ -173,91 +134,13 @@ class HumanoidRobot(BaseTask):
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
         self.extras["delta_yaw_ok"] = self.delta_yaw < 0.6
-        if self.cfg.depth.use_camera and self.global_counter % self.cfg.depth.update_interval == 0:
-            self.extras["depth"] = self.depth_buffer[:, -2]  # have already selected last one
-        else:
-            self.extras["depth"] = None
 
-        if self.save:
-            for env_idx in range(self.num_envs):
-                self.current_episode_buffer['observations'][env_idx].append(
-                    self.obs_buf[env_idx].cpu().numpy().copy())  
-                self.current_episode_buffer['actions'][env_idx].append(
-                    self.actions[env_idx].cpu().numpy().copy())      
-                
-                self.current_episode_buffer['rewards'][env_idx].append(
-                    self.rew_buf[env_idx].cpu().numpy().copy()) 
-                
-                self.current_episode_buffer['height_map'][env_idx].append(
-                    self.measured_heights_data[env_idx].cpu().numpy().copy()) 
-                
-                self.current_episode_buffer['rigid_body_state'][env_idx].append(
-                    self.rigid_body_states[env_idx].cpu().numpy().copy()) 
-                
-                self.current_episode_buffer['dof_state'][env_idx].append(
-                    self.dof_state[env_idx].cpu().numpy().copy())  
-
-                if self.privileged_obs_buf is not None:
-                    self.current_episode_buffer['privileged_obs'][env_idx].append(
-                        self.privileged_obs_buf[env_idx].cpu().numpy().copy())      
-
-        if(self.cfg.rewards.is_play):
-            if(self.total_times > 0):
-                if(self.total_times > self.last_times):
-                    # print("total_times=",self.total_times)
-                    # print("success_rate=",self.success_times / self.total_times)
-                    # print("complete_rate=",(self.complete_times / self.total_times).cpu().numpy().copy())
-                    self.last_times = self.total_times
 
         return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras
-
-    def get_history_observations(self):
-        return self.obs_history_buf
-    
-    def normalize_depth_image(self, depth_image):
-        depth_image = depth_image * -1
-        depth_image = (depth_image - self.cfg.depth.near_clip) / (self.cfg.depth.far_clip - self.cfg.depth.near_clip)  - 0.5
-        return depth_image
-    
-    def process_depth_image(self, depth_image, env_id):
-        # These operations are replicated on the hardware
-        depth_image = self.crop_depth_image(depth_image)
-        depth_image += self.cfg.depth.dis_noise * 2 * (torch.rand(1)-0.5)[0]
-        depth_image = torch.clip(depth_image, -self.cfg.depth.far_clip, -self.cfg.depth.near_clip)
-        depth_image = self.resize_transform(depth_image[None, :]).squeeze()
-        depth_image = self.normalize_depth_image(depth_image)
-        return depth_image
 
     def crop_depth_image(self, depth_image):
         # crop 30 pixels from the left and right and and 20 pixels from bottom and return croped image
         return depth_image[:-2, 4:-4]
-
-    def update_depth_buffer(self):
-        if not self.cfg.depth.use_camera:
-            return
-
-        if self.global_counter % self.cfg.depth.update_interval != 0:
-            return
-        self.gym.step_graphics(self.sim) # required to render in headless mode
-        self.gym.render_all_camera_sensors(self.sim)
-        self.gym.start_access_image_tensors(self.sim)
-
-        for i in range(self.num_envs):
-            depth_image_ = self.gym.get_camera_image_gpu_tensor(self.sim, 
-                                                                self.envs[i], 
-                                                                self.cam_handles[i],
-                                                                gymapi.IMAGE_DEPTH)
-            
-            depth_image = gymtorch.wrap_tensor(depth_image_)
-            depth_image = self.process_depth_image(depth_image, i)
-
-            init_flag = self.episode_length_buf <= 1
-            if init_flag[i]:
-                self.depth_buffer[i] = torch.stack([depth_image] * self.cfg.depth.buffer_len, dim=0)
-            else:
-                self.depth_buffer[i] = torch.cat([self.depth_buffer[i, 1:], depth_image.to(self.device).unsqueeze(0)], dim=0)
-
-        self.gym.end_access_image_tensors(self.sim)
 
     def _update_goals(self):
         next_flag = self.reach_goal_timer > self.cfg.env.reach_goal_delay / self.dt
@@ -317,8 +200,6 @@ class HumanoidRobot(BaseTask):
         self.cur_goals = self._gather_cur_goals()
         self.next_goals = self._gather_cur_goals(future=1)
 
-        self.update_depth_buffer()
-
         self.compute_observations() # in some cases a simulation step might be required to refresh some obs (for example body positions)
 
         self.last_last_actions[:] = self.last_actions[:]
@@ -337,11 +218,6 @@ class HumanoidRobot(BaseTask):
             # self._draw_height_samples()
             self._draw_goals()
             # self._draw_feet()
-            if self.cfg.depth.use_camera:
-                window_name = "Depth Image"
-                cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-                cv2.imshow("Depth Image", self.depth_buffer[self.lookat_id, -1].cpu().numpy() + 0.5)
-                cv2.waitKey(1)
 
     def reindex_feet(self, vec):
         return vec[:, [1, 0, 3, 2]]
@@ -383,45 +259,6 @@ class HumanoidRobot(BaseTask):
         if len(env_ids) == 0:
             return
         
-        if self.save:
-            for env_id in env_ids:
-                try:
-                    if len(self.current_episode_buffer['observations'][env_id]) > 750:
-                        # 转换为numpy数组
-                        episode_obs = np.stack(self.current_episode_buffer['observations'][env_id])  # [T,*]
-                        episode_act = np.stack(self.current_episode_buffer['actions'][env_id])       # [T,*]
-                        episode_rew = np.stack(self.current_episode_buffer['rewards'][env_id])      # [T]
-                        episode_hei = np.stack(self.current_episode_buffer['height_map'][env_id])      # [T, 396]
-                        episode_body = np.stack(self.current_episode_buffer['rigid_body_state'][env_id]) # [T,13,13] first is root
-                        episode_dof = np.stack(self.current_episode_buffer['dof_state'][env_id])
-                      
-                        # 存入主数据存储
-                        self.episode_data['observations'][env_id].append(episode_obs)
-                        self.episode_data['actions'][env_id].append(episode_act)
-                        self.episode_data['rewards'][env_id].append(episode_rew)
-                        self.episode_data['height_map'][env_id].append(episode_hei)
-                        self.episode_data['rigid_body_state'][env_id].append(episode_body)
-                        self.episode_data['dof_state'][env_id].append(episode_dof)
-
-                        
-                        # 处理privileged观测
-                        if self.privileged_obs_buf is not None:
-                            episode_priv = np.stack(self.current_episode_buffer['privileged_obs'][env_id]) # [T,*]
-                            self.episode_data['privileged_obs'][env_id].append(episode_priv)
-                        
-                        # 清空当前buffer
-                        self.current_episode_buffer['observations'][env_id] = []
-                        self.current_episode_buffer['actions'][env_id] = []
-                        self.current_episode_buffer['rewards'][env_id] = []
-                        self.current_episode_buffer['height_map'][env_id] = []
-                        self.current_episode_buffer['privileged_obs'][env_id] = []
-                        self.current_episode_buffer['rigid_body_state'][env_id] = []
-                        self.current_episode_buffer['dof_state'][env_id] = []
-                        
-                        print(f"Env {env_id} have saved {episode_obs.shape[0]} step data")
-                except Exception as e:
-                    print(f"An error occured when saving env {env_id}: {str(e)}")
-        
         # update curriculum
         if self.cfg.terrain.curriculum:
             self._update_terrain_curriculum(env_ids)
@@ -446,7 +283,6 @@ class HumanoidRobot(BaseTask):
         self.last_root_vel[:] = 0.
         self.feet_air_time[env_ids] = 0.
         self.reset_buf[env_ids] = 1
-        self.obs_history_buf[env_ids, :, :] = 0.  # reset obs history buffer TODO no 0s
         self.contact_buf[env_ids, :, :] = 0.
         self.action_history_buf[env_ids, :, :] = 0.
         self.cur_goal_idx[env_ids] = 0
@@ -492,64 +328,29 @@ class HumanoidRobot(BaseTask):
             self.episode_sums["termination"] += rew
     
     def compute_observations(self):
-        """ 
-        Computes observations
-        即本体感知
-        """
-        imu_obs = torch.stack((self.roll, self.pitch), dim=1)
         if self.global_counter % 5 == 0:
             self.delta_yaw = self.target_yaw - self.yaw
             self.delta_next_yaw = self.next_target_yaw - self.yaw
-        obs_buf = torch.cat((#skill_vector, 
-                            self.base_ang_vel  * self.obs_scales.ang_vel,   #[1,3] # 3
-                            imu_obs,    #[1,2]  2 只包含roll和pitch
-                            0*self.delta_yaw[:, None], # 1
+        obs_buf = torch.cat((
+                            self.base_ang_vel  * self.obs_scales.ang_vel,# 3
+                            self.base_quat, # 4
                             self.delta_yaw[:, None], # 1
                             self.delta_next_yaw[:, None],  # 1
-                            0*self.commands[:, 0:2],  # 2
-                            self.commands[:, 0:1],  #[1,1]  # 1
-                            (self.env_class != 17).float()[:, None],  #1
-                            (self.env_class == 17).float()[:, None], # 1
-                            (self.dof_pos - self.default_dof_pos_all) * self.obs_scales.dof_pos, # h1:19
-                            self.dof_vel * self.obs_scales.dof_vel,  # h1:19
-                            self.action_history_buf[:, -1], # h1:19
-                            self.contact_filt.float()-0.5, # 2
+                            self.commands[:, 0:1], # 1
+                            (self.dof_pos - self.default_dof_pos_all) * self.obs_scales.dof_pos, # 12
+                            self.dof_vel * self.obs_scales.dof_vel,  # 12
+                            self.action_history_buf[:, -1], # 12
                             ),dim=-1)
 
-        priv_explicit = torch.cat((self.base_lin_vel * self.obs_scales.lin_vel,
-                                   0 * self.base_lin_vel,
-                                   0 * self.base_lin_vel), dim=-1)
-        priv_latent = torch.cat((
-            self.mass_params_tensor,
-            self.friction_coeffs_tensor,
-            self.motor_strength[0] - 1, 
-            self.motor_strength[1] - 1
-        ), dim=-1)
+        priv_explicit = self.base_lin_vel * self.obs_scales.lin_vel
+
         if self.cfg.terrain.measure_heights:
             heights = torch.clip(self.root_states[:, 2].unsqueeze(1) - 0.3 - self.measured_heights, -1, 1.)
             
-            self.obs_buf = torch.cat([obs_buf, heights, priv_explicit, priv_latent, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
+            self.obs_buf = torch.cat([obs_buf, heights, priv_explicit], dim=-1)
         else:
-            self.obs_buf = torch.cat([obs_buf, priv_explicit, priv_latent, self.obs_history_buf.view(self.num_envs, -1)], dim=-1)
-        obs_buf[:, 6:8] = 0  
+            self.obs_buf = torch.cat([obs_buf, priv_explicit], dim=-1)
 
-        self.obs_history_buf = torch.where(
-            (self.episode_length_buf <= 1)[:, None, None], 
-            torch.stack([obs_buf] * self.cfg.env.history_len, dim=1),
-            torch.cat([
-                self.obs_history_buf[:, 1:],
-                obs_buf.unsqueeze(1)
-            ], dim=1)
-        )
-
-        self.contact_buf = torch.where(
-            (self.episode_length_buf <= 1)[:, None, None], 
-            torch.stack([self.contact_filt.float()] * self.cfg.env.contact_buf_len, dim=1),
-            torch.cat([
-                self.contact_buf[:, 1:],
-                self.contact_filt.float().unsqueeze(1)
-            ], dim=1)
-        )
             
     def get_noisy_measurement(self, x, scale):
         if self.cfg.noise.add_noise:
@@ -560,8 +361,6 @@ class HumanoidRobot(BaseTask):
         """ Creates simulation, terrain and evironments
         """
         self.up_axis_idx = 2 # 2 for z, 1 for y -> adapt gravity accordingly
-        if self.cfg.depth.use_camera:
-            self.graphics_device_id = self.sim_device_id  # required in headless mode
         self.sim = self.gym.create_sim(self.sim_device_id, self.graphics_device_id, self.physics_engine, self.sim_params)
 
         start = time()
@@ -670,7 +469,7 @@ class HumanoidRobot(BaseTask):
             self.commands[:, 2] *= torch.abs(self.commands[:, 2]) > self.cfg.commands.ang_vel_clip
         
         if self.cfg.terrain.measure_heights:
-            if self.global_counter % self.cfg.depth.update_interval == 0:
+            if self.global_counter % 5 == 0:
                 self.measured_heights, self.measured_heights_data  = self._get_heights()
         if self.cfg.domain_rand.push_robots and  (self.common_step_counter % self.cfg.domain_rand.push_interval == 0):
             self._push_robots()
@@ -855,8 +654,6 @@ class HumanoidRobot(BaseTask):
 
         str_rng = self.cfg.domain_rand.motor_strength_range
         self.motor_strength = (str_rng[1] - str_rng[0]) * torch.rand(2, self.num_envs, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False) + str_rng[0]
-        if self.cfg.env.history_encoding:
-            self.obs_history_buf = torch.zeros(self.num_envs, self.cfg.env.history_len, self.cfg.env.n_proprio, device=self.device, dtype=torch.float)
         self.action_history_buf = torch.zeros(self.num_envs, self.cfg.domain_rand.action_buf_len, self.num_dofs, device=self.device, dtype=torch.float)
         # self.contact_buf = torch.zeros(self.num_envs, self.cfg.env.contact_buf_len, 4, device=self.device, dtype=torch.float)
         self.contact_buf = torch.zeros(self.num_envs, self.cfg.env.contact_buf_len, 2, device=self.device, dtype=torch.float)
@@ -899,12 +696,6 @@ class HumanoidRobot(BaseTask):
         self.height_update_interval = 1
         if hasattr(self.cfg.env, "height_update_dt"):
             self.height_update_interval = int(self.cfg.env.height_update_dt / (self.cfg.sim.dt * self.cfg.control.decimation))
-
-        if self.cfg.depth.use_camera:
-            self.depth_buffer = torch.zeros(self.num_envs,  
-                                            self.cfg.depth.buffer_len, 
-                                            self.cfg.depth.resized[1], 
-                                            self.cfg.depth.resized[0]).to(self.device)
 
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
@@ -960,34 +751,6 @@ class HumanoidRobot(BaseTask):
         print("Trimesh added")
         self.height_samples = torch.tensor(self.terrain.heightsamples).view(self.terrain.tot_rows, self.terrain.tot_cols).to(self.device)
         self.x_edge_mask = torch.tensor(self.terrain.x_edge_mask).view(self.terrain.tot_rows, self.terrain.tot_cols).to(self.device)
-
-    def attach_camera(self, i, env_handle, actor_handle):
-        if self.cfg.depth.use_camera:
-            config = self.cfg.depth
-            camera_props = gymapi.CameraProperties()
-            camera_props.width = self.cfg.depth.original[0]
-            camera_props.height = self.cfg.depth.original[1]
-            camera_props.enable_tensors = True
-            camera_horizontal_fov = self.cfg.depth.horizontal_fov 
-            camera_props.horizontal_fov = camera_horizontal_fov
-
-            camera_handle = self.gym.create_camera_sensor(env_handle, camera_props)
-            self.cam_handles.append(camera_handle)
-            
-            local_transform = gymapi.Transform()
-            
-            camera_position = np.copy(config.position)
-            camera_angle = np.random.uniform(config.angle[0], config.angle[1])
-            
-            local_transform.p = gymapi.Vec3(*camera_position)
-            local_transform.r = gymapi.Quat.from_euler_zyx(0, np.radians(camera_angle), 0)
-            root_handle = self.gym.get_actor_root_rigid_body_handle(env_handle, actor_handle)
-
-            # print("rigid_body_names=",self.gym.get_actor_rigid_body_names(env_handle, actor_handle))
-
-            
-            self.gym.attach_camera_to_body(camera_handle, env_handle, root_handle, local_transform, gymapi.FOLLOW_TRANSFORM)
-        # print("rigid_body_names=",self.gym.get_actor_rigid_body_names(env_handle, actor_handle))
 
     def _create_envs(self):
         """ Creates environments:
@@ -1075,16 +838,11 @@ class HumanoidRobot(BaseTask):
             self.gym.set_actor_rigid_body_properties(env_handle, humanoid_handle, body_props, recomputeInertia=True)
             self.envs.append(env_handle)
             self.actor_handles.append(humanoid_handle)
-            
-            self.attach_camera(i, env_handle, humanoid_handle)
 
             self.mass_params_tensor[i, :] = torch.from_numpy(mass_params).to(self.device).to(torch.float)
 
-        # print("open=",self.cfg.domain_rand.randomize_friction)
         if self.cfg.domain_rand.randomize_friction:
             self.friction_coeffs_tensor = self.friction_coeffs.to(self.device).to(torch.float).squeeze(-1)
-
-        # print("name=",feet_names)
 
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):
@@ -1199,23 +957,22 @@ class HumanoidRobot(BaseTask):
             else:
                 gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[self.lookat_id], pose)
         
-        if not self.cfg.depth.use_camera:
-            sphere_geom_arrow = gymutil.WireframeSphereGeometry(0.02, 16, 16, None, color=(1, 0.35, 0.25))
-            pose_robot = self.root_states[self.lookat_id, :3].cpu().numpy()
-            for i in range(5):
-                norm = torch.norm(self.target_pos_rel, dim=-1, keepdim=True)
-                target_vec_norm = self.target_pos_rel / (norm + 1e-5)
-                pose_arrow = pose_robot[:2] + 0.1*(i+3) * target_vec_norm[self.lookat_id, :2].cpu().numpy()
-                pose = gymapi.Transform(gymapi.Vec3(pose_arrow[0], pose_arrow[1], pose_robot[2]), r=None)
-                gymutil.draw_lines(sphere_geom_arrow, self.gym, self.viewer, self.envs[self.lookat_id], pose)
-            
-            sphere_geom_arrow = gymutil.WireframeSphereGeometry(0.02, 16, 16, None, color=(0, 1, 0.5))
-            for i in range(5):
-                norm = torch.norm(self.next_target_pos_rel, dim=-1, keepdim=True)
-                target_vec_norm = self.next_target_pos_rel / (norm + 1e-5)
-                pose_arrow = pose_robot[:2] + 0.2*(i+3) * target_vec_norm[self.lookat_id, :2].cpu().numpy()
-                pose = gymapi.Transform(gymapi.Vec3(pose_arrow[0], pose_arrow[1], pose_robot[2]), r=None)
-                gymutil.draw_lines(sphere_geom_arrow, self.gym, self.viewer, self.envs[self.lookat_id], pose)
+        sphere_geom_arrow = gymutil.WireframeSphereGeometry(0.02, 16, 16, None, color=(1, 0.35, 0.25))
+        pose_robot = self.root_states[self.lookat_id, :3].cpu().numpy()
+        for i in range(5):
+            norm = torch.norm(self.target_pos_rel, dim=-1, keepdim=True)
+            target_vec_norm = self.target_pos_rel / (norm + 1e-5)
+            pose_arrow = pose_robot[:2] + 0.1*(i+3) * target_vec_norm[self.lookat_id, :2].cpu().numpy()
+            pose = gymapi.Transform(gymapi.Vec3(pose_arrow[0], pose_arrow[1], pose_robot[2]), r=None)
+            gymutil.draw_lines(sphere_geom_arrow, self.gym, self.viewer, self.envs[self.lookat_id], pose)
+        
+        sphere_geom_arrow = gymutil.WireframeSphereGeometry(0.02, 16, 16, None, color=(0, 1, 0.5))
+        for i in range(5):
+            norm = torch.norm(self.next_target_pos_rel, dim=-1, keepdim=True)
+            target_vec_norm = self.next_target_pos_rel / (norm + 1e-5)
+            pose_arrow = pose_robot[:2] + 0.2*(i+3) * target_vec_norm[self.lookat_id, :2].cpu().numpy()
+            pose = gymapi.Transform(gymapi.Vec3(pose_arrow[0], pose_arrow[1], pose_robot[2]), r=None)
+            gymutil.draw_lines(sphere_geom_arrow, self.gym, self.viewer, self.envs[self.lookat_id], pose)
         
     def _draw_feet(self):
         if hasattr(self, 'feet_at_edge'):

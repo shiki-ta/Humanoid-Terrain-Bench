@@ -48,9 +48,7 @@ def get_load_path(root, load_run=-1, checkpoint=-1, model_name_include="model"):
 
 def play(args):
     faulthandler.enable()
-    exptid = args.exptid
-    log_pth = "../../logs/{}/".format(args.proj_name) + args.exptid
-
+    
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
     env_cfg.env.num_envs = 100
     env_cfg.commands.resampling_time = 60
@@ -67,12 +65,12 @@ def play(args):
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
     obs = env.get_observations()
 
-    file_path = 'your/jit/model/path.pt'
+    file_path = '/home/gtx/competition_only/legged_gym/logs/parkour_new/test/traced/test-0-base_jit.pt'
     policy = torch.jit.load(file_path, map_location=env.device)
     actions = torch.zeros(env.num_envs, 12, device=env.device, requires_grad=False)
     for i in range(10*int(env.max_episode_length)):
         depth_latent = None
-        obs = obs[:,:175]
+        obs = obs[:,:178]
         actions = policy(obs.detach())
         obs, _, rews, dones, infos = env.step(actions.detach())
         

@@ -32,7 +32,7 @@ from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobot
 
 class G1FixCfg( LeggedRobotCfg ):
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [0.0, 0.0, 0.80]  # x,y,z [m]
+        pos = [0.0, 0.0, 0.78]  # x,y,z [m]
         default_joint_angles = { # = target angles [rad] when action = 0.0
            'left_hip_yaw_joint' : 0. ,
            'left_hip_roll_joint' : 0,
@@ -48,22 +48,16 @@ class G1FixCfg( LeggedRobotCfg ):
            'right_ankle_roll_joint' : 0,
            'torso_joint' : 0.
         }
-
+         
     class env( LeggedRobotCfg.env ):
         num_envs = 2048
         n_scan = 132
-        n_priv = 3 + 3 + 3 # = 9 base velocity 3个
-        # n_priv_latent = 4 + 1 + 12 +12
-        n_priv_latent = 4 + 1 + 12 + 12 # mass, fraction, motor strength1 and 2
-        
-        n_proprio = 51 # 所有本体感知信息，即obs_buf
-        history_len = 10
+        n_priv = 3 
+        n_proprio = 46
 
-        # num obs = 53+132+10*53+43+9 = 187+47+530+43+9 = 816
-        num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent + n_priv #n_scan + n_proprio + n_priv #187 + 47 + 5 + 12 
+        num_observations = n_proprio + n_scan + n_priv 
         num_actions = 12
-        env_spacing = 3.  # not used with heightfields/trimeshes 
-
+        env_spacing = 3. 
         contact_buf_len = 100
         
     class control( LeggedRobotCfg.control ):
@@ -99,12 +93,27 @@ class G1FixCfg( LeggedRobotCfg ):
 
     class commands( LeggedRobotCfg.commands ):
         class ranges( LeggedRobotCfg.commands.ranges ):
-            lin_vel_x = [0.1, 0.6]  # min max [m/s]
+            lin_vel_x = [0.2, 0.6]  # min max [m/s]
             lin_vel_y = [0.0, 0.0]   # min max [m/s]
             ang_vel_yaw = [0, 0]    # min max [rad/s]
             heading = [0, 0]
+    
+    class domain_rand(LeggedRobotCfg.domain_rand):
+        randomize_friction = True
+        friction_range = [0.1, 1.25]
+        randomize_base_mass = True
+        added_mass_range = [-1., 3.]
+        push_robots = True
+        push_interval_s = 5
+        max_push_vel_xy = 1.5
+        randomize_gains = True
+        stiffness_multiplier_range = [0.9, 1.1]
+        damping_multiplier_range = [0.9, 1.1]
 
-  
+    class noise(LeggedRobotCfg.noise):
+        add_noise = True
+        noise_level = 1.0 # scales other values
+
     class rewards:
         class scales:
             termination = -0.0
@@ -123,29 +132,20 @@ class G1FixCfg( LeggedRobotCfg ):
             action_rate = -0.01
             stand_still = -0.
 
-        only_positive_rewards = True # if true negative total rewards are clipped at zero (avoids early termination problems)
-        tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
-        soft_dof_pos_limit = 1. # percentage of urdf limits, values above this limit are penalized
+        only_positive_rewards = True 
+        tracking_sigma = 0.25 
+        soft_dof_pos_limit = 1.
         soft_dof_vel_limit = 1.
         soft_torque_limit = 1.
         base_height_target = 1.
-        max_contact_force = 100. # forces above this value are penalized
-        is_play = False
+        max_contact_force = 100.
 
 class G1FixCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
         entropy_coef = 0.01
     class runner( LeggedRobotCfgPPO.runner ):
+        policy_class_name = 'ActorCriticRecurrent'
         run_name = ''
         experiment_name = 'g1_fix'
         max_iterations = 50001 # number of policy updates
-        save_interval = 500
-
-    class estimator(LeggedRobotCfgPPO.estimator):
-        train_with_estimated_states = True
-        learning_rate = 1.e-4
-        hidden_dims = [128, 64]
-        priv_states_dim = G1FixCfg.env.n_priv
-        num_prop = G1FixCfg.env.n_proprio
-        num_scan = G1FixCfg.env.n_scan
-
+        save_interval = 300

@@ -14,58 +14,33 @@ Provided an online data collection module that can store trained policies in dat
 ```bash
 conda create -n terrain python=3.8
 conda activate terrain
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118   #or cu113,cu115,cu121, based on your cuda version
 
 git clone https://github.com/shiki-ta/Humanoid-Terrain-Bench.git
 cd Humanoid-Terrain-Bench
-
-git clone https://github.com/shiki-ta/Isaacgym.git
-
-cd Isaacgym/python && pip install -e .
+# Download the Isaac Gym binaries from https://developer.nvidia.com/isaac-gym 
+cd isaacgym/python && pip install -e .
 cd rsl_rl && pip install -e .
 cd legged_gym && pip install -e .
 cd challenging_terrain && pip install -e .
 pip install "numpy<1.24" pydelatin wandb tqdm opencv-python ipdb pyfqmr flask
 ```
 
-
 ### Usage ###
 `cd legged_gym/scripts`
 1. Train base policy:  
 ```
-python train.py --exptid=h1-2 --device=cuda:0 
+python train.py --exptid=test
 ```
 
-2. Resume Training:
+2. Training Recovery:
 ```
-python train.py --exptid=h1-2 --device=cuda:0 --resume --resumeid=test --checkpoint=50000
+python train.py --exptid=test-1  --resume --resumeid=test --checkpoint=50000
 ```
 
 3. Play base policy:
 ```
-python play.py --exptid=test 
-```
-
-4. Record trace as dataset
-
-```
-python record_replay.py --exptid=test --save
-```
-
-5. Save model as jit
-
-```
-python save_jit.py --exptid=test
-```
-
-(for competition,can not be directly used)
-```
-python save_jit_175.py --exptid=test
-```
-
-6. Evaluate your policy (for competition,can not be directly used)
-```
-python evaluate.py --exptid=test
+python play.py --exptid=test
 ```
 
 ### Arguments ###

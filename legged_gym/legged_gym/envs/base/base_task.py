@@ -47,13 +47,11 @@ class BaseTask():
         sim_device_type, self.sim_device_id = gymutil.parse_device_str(self.sim_device)
         self.headless = headless
 
-        # env device is GPU only if sim is on GPU and use_gpu_pipeline=True, otherwise returned tensors are copied to CPU by physX.
         if sim_device_type=='cuda' and sim_params.use_gpu_pipeline:
             self.device = self.sim_device
         else:
             self.device = 'cpu'
 
-        # graphics device for rendering, -1 for no rendering
         self.graphics_device_id = self.sim_device_id
         if self.headless == True:
             self.graphics_device_id = -1
@@ -77,15 +75,12 @@ class BaseTask():
             self.privileged_obs_buf = torch.zeros(self.num_envs, self.num_privileged_obs, device=self.device, dtype=torch.float)
         else: 
             self.privileged_obs_buf = None
-            # self.num_privileged_obs = self.num_obs
 
         self.extras = {}
 
-        # create envs, sim and viewer
         self.create_sim()
         self.gym.prepare_sim(self.sim)
 
-        # todo: read from config
         self.enable_viewer_sync = True
         self.viewer = None
 

@@ -81,34 +81,28 @@ class TaskRegistry():
             isaacgym.VecTaskPython: The created environment
             Dict: the corresponding config file
         """
-        # if no args passed get command line arguments
         if args is None:
             args = get_args()
-        # check if there is a registered env with that name
         if name in self.task_classes:
             task_class = self.get_task_class(name)
         else:
             raise ValueError(f"Task with name: {name} was not registered")
         if env_cfg is None:
-            # load config files
             env_cfg, _ = self.get_cfgs(name)
         
-        # override cfg from args (if specified)
         env_cfg, _ = update_cfg_from_args(env_cfg, None, args)
         set_seed(env_cfg.seed)
         # parse sim params (convert to dict first)
         sim_params = {"sim": class_to_dict(env_cfg.sim)}
         sim_params = parse_sim_params(args, sim_params)
 
-        # print("test=",env_cfg.terrain.num_goals)
 
         env = task_class(   cfg=env_cfg,
                             sim_params=sim_params,
                             physics_engine=args.physics_engine,
                             sim_device=args.sim_device,
                             headless=args.headless,
-                            save=args.save)
-        # print("test=",env_cfg)
+                            )
         return env, env_cfg
 
     def make_alg_runner(self, env, name=None, args=None, train_cfg=None, init_wandb=True, log_root="default", **kwargs) -> Tuple[OnPolicyRunner, LeggedRobotCfgPPO]:

@@ -64,16 +64,13 @@ class H1_2FixCfg( LeggedRobotCfg ):
     class env( LeggedRobotCfg.env ):
         num_envs = 2048
         n_scan = 132
-        n_priv = 3 + 3 + 3 
-        n_priv_latent = 4 + 1 + 12 + 12 
-        n_proprio = 51 
-        history_len = 10
-        num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent + n_priv 
+        n_priv = 3 
+        n_proprio = 46
+
+        num_observations = n_proprio + n_scan + n_priv 
         num_actions = 12
-        env_spacing = 3.
-
+        env_spacing = 3. 
         contact_buf_len = 100
-
         
     class control( LeggedRobotCfg.control ):
         control_type = 'P'
@@ -101,6 +98,7 @@ class H1_2FixCfg( LeggedRobotCfg ):
         name = "h1_2_fix"
         foot_name = "ankle_roll"
         knee_name = "knee"
+        hip_name = "hip_yaw"
         penalize_contacts_on = ["hip", "knee"]
         terminate_after_contacts_on = ["pelvis"]
         self_collisions = 1 
@@ -170,12 +168,3 @@ class H1_2FixCfgPPO( LeggedRobotCfgPPO ):
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
         experiment_name = 'h1_2_fix'
-
-    class estimator(LeggedRobotCfgPPO.estimator):
-        train_with_estimated_states = True
-        learning_rate = 1.e-4
-        hidden_dims = [128, 64]
-        priv_states_dim = H1_2FixCfg.env.n_priv
-        num_prop = H1_2FixCfg.env.n_proprio
-        num_scan = H1_2FixCfg.env.n_scan
-

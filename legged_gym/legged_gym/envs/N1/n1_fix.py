@@ -52,20 +52,13 @@ class N1FixCfg( LeggedRobotCfg ):
     class env( LeggedRobotCfg.env ):
         num_envs = 2048
         n_scan = 132
-        n_priv = 3 + 3 + 3 # = 9 base velocity 3个
+        n_priv = 3 
+        n_proprio = 46
 
-        n_priv_latent = 4 + 1 + 12 + 12 # mass, fraction, motor strength1 and 2
-        
-        n_proprio = 51 # 所有本体感知信息，即obs_buf
-        history_len = 10
-
-        # num obs = 53+132+10*53+43+9 = 187+47+530+43+9 = 816
-        num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent + n_priv #n_scan + n_proprio + n_priv #187 + 47 + 5 + 12 
+        num_observations = n_proprio + n_scan + n_priv 
         num_actions = 12
-        env_spacing = 3.  # not used with heightfields/trimeshes 
-
+        env_spacing = 3. 
         contact_buf_len = 100
-
         
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
@@ -93,6 +86,7 @@ class N1FixCfg( LeggedRobotCfg ):
         name = "N1"
         foot_name = "foot_roll"
         knee_name = "shank"
+        hip_name = "hip_yaw"
         penalize_contacts_on = ["thigh", "shank"]
         terminate_after_contacts_on = ["base"]
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
@@ -140,12 +134,3 @@ class N1FixCfgPPO( LeggedRobotCfgPPO ):
         experiment_name = 'n1_fix'
         max_iterations = 50001 # number of policy updates
         save_interval = 500
-
-    class estimator(LeggedRobotCfgPPO.estimator):
-        train_with_estimated_states = True
-        learning_rate = 1.e-4
-        hidden_dims = [128, 64]
-        priv_states_dim = N1FixCfg.env.n_priv
-        num_prop = N1FixCfg.env.n_proprio
-        num_scan = N1FixCfg.env.n_scan
-

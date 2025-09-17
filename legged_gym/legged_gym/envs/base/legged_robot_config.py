@@ -44,9 +44,8 @@ class LeggedRobotCfg(BaseConfig):
         n_priv = 3+3 +3
         n_priv_latent = 4 + 1 + 12 +12
         n_proprio = 3 + 2 + 3 + 4 + 36 + 5
-        history_len = 10
 
-        num_observations = n_proprio + n_scan + history_len*n_proprio + n_priv_latent + n_priv #n_scan + n_proprio + n_priv #187 + 47 + 5 + 12 
+        num_observations = n_proprio + n_scan + n_priv_latent + n_priv #n_scan + n_proprio + n_priv #187 + 47 + 5 + 12 
         num_privileged_obs = None # if not None a priviledge_obs_buf will be returned by step() (critic obs for assymetric training). None is returned otherwise 
         num_actions = 12
         env_spacing = 3.  # not used with heightfields/trimeshes 
@@ -54,7 +53,6 @@ class LeggedRobotCfg(BaseConfig):
         episode_length_s = 20# episode length in seconds
         obs_type = "og"
 
-        history_encoding = True
         reorder_dofs = True
         
         
@@ -81,29 +79,6 @@ class LeggedRobotCfg(BaseConfig):
         next_goal_threshold = 0.2
         reach_goal_delay = 0.1
         num_future_goal_obs = 2
-
-    class depth:
-        use_camera = False
-        camera_num_envs = 192
-        camera_terrain_num_rows = 10
-        camera_terrain_num_cols = 20
-
-        position = [0.27, 0, 0.03]  # front camera
-        angle = [-5, 5]  # positive pitch down
-
-        update_interval = 5  # 5 works without retraining, 8 worse
-
-        original = (106, 60)
-        resized = (87, 58)
-        horizontal_fov = 87
-        buffer_len = 2
-        
-        near_clip = 0
-        far_clip = 2
-        dis_noise = 0.0
-        
-        scale = 1
-        invert = True
 
     class normalization:
         class obs_scales:
@@ -312,22 +287,6 @@ class LeggedRobotCfgPPO(BaseConfig):
         dagger_update_freq = 20
         priv_reg_coef_schedual = [0, 0.1, 2000, 3000]
         priv_reg_coef_schedual_resume = [0, 0.1, 0, 1]
-    
-    class depth_encoder:
-        if_depth = LeggedRobotCfg.depth.use_camera
-        depth_shape = LeggedRobotCfg.depth.resized
-        buffer_len = LeggedRobotCfg.depth.buffer_len
-        hidden_dims = 512
-        learning_rate = 1.e-3
-        num_steps_per_env = LeggedRobotCfg.depth.update_interval * 24
-
-    class estimator:
-        train_with_estimated_states = True
-        learning_rate = 1.e-4
-        hidden_dims = [128, 64]
-        priv_states_dim = LeggedRobotCfg.env.n_priv
-        num_prop = LeggedRobotCfg.env.n_proprio
-        num_scan = LeggedRobotCfg.env.n_scan
 
     class runner:
         policy_class_name = 'ActorCritic'

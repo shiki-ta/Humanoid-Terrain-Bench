@@ -123,24 +123,6 @@ def get_load_path(root, load_run=-1, checkpoint=-1, model_name_include="model"):
 def update_cfg_from_args(env_cfg, cfg_train, args):
     # seed
     if env_cfg is not None:
-        if args.use_camera:
-            env_cfg.depth.use_camera = args.use_camera
-        if env_cfg.depth.use_camera and args.headless:  # set camera specific parameters
-            env_cfg.env.num_envs = env_cfg.depth.camera_num_envs
-            env_cfg.terrain.num_rows = env_cfg.depth.camera_terrain_num_rows
-            env_cfg.terrain.num_cols = env_cfg.depth.camera_terrain_num_cols
-            env_cfg.terrain.max_error = env_cfg.terrain.max_error_camera
-            env_cfg.terrain.horizontal_scale = env_cfg.terrain.horizontal_scale_camera
-            env_cfg.terrain.simplify_grid = True
-            env_cfg.terrain.terrain_dict["parkour_hurdle"] = 0.2
-            env_cfg.terrain.terrain_dict["parkour_flat"] = 0.05
-            env_cfg.terrain.terrain_dict["parkour_gap"] = 0.2
-            env_cfg.terrain.terrain_dict["parkour_step"] = 0.2
-            env_cfg.terrain.terrain_dict["demo"] = 0.15
-            env_cfg.terrain.terrain_proportions = list(env_cfg.terrain.terrain_dict.values())
-        if env_cfg.depth.use_camera:
-            env_cfg.terrain.y_range = [-0.1, 0.1]
-
         # num envs
         if args.num_envs is not None:
             env_cfg.env.num_envs = args.num_envs
@@ -179,7 +161,7 @@ def update_cfg_from_args(env_cfg, cfg_train, args):
 
 def get_args():
     custom_parameters = [
-        {"name": "--task", "type": str, "default": "h1_2_fix", "help": "Resume training or start testing from a checkpoint. Overrides config file if provided."},
+        {"name": "--task", "type": str, "default": "g1", "help": "Resume training or start testing from a checkpoint. Overrides config file if provided."},
         {"name": "--resume", "action": "store_true", "default": False,  "help": "Resume training from a checkpoint"},
         {"name": "--experiment_name", "type": str,  "help": "Name of the experiment to run or load. Overrides config file if provided."},
         {"name": "--run_name", "type": str,  "help": "Name of the run. Overrides config file if provided."},
